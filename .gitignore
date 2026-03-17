@@ -7,7 +7,6 @@ service
 
 # Go
 vendor/
-go.sum
 
 *.pdf
 
