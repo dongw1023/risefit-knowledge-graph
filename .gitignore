@@ -1,0 +1,14 @@
+# Binaries
+pdf-service
+service
+
+# Environment variables
+.env
+
+# Go
+vendor/
+go.sum
+
+*.pdf
+
+.idea/
