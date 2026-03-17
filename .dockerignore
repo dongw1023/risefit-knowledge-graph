@@ -1,0 +1,20 @@
+# Binaries
+ingest
+server
+pdf-service
+service
+
+# Environment variables
+.env
+
+# Go
+vendor/
+go.sum
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Git
+.git
+.gitignore
