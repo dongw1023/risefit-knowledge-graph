@@ -9,7 +9,6 @@ service
 
 # Go
 vendor/
-go.sum
 
 # Docker
 Dockerfile
