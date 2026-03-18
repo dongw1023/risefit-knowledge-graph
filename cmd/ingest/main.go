@@ -82,17 +82,24 @@ func main() {
 	}
 	defer gcsClient.Close()
 
-	pdfPath := "Cover Confirmation.pdf"
+	pdfPath := ""
 	if len(os.Args) > 1 {
 		pdfPath = os.Args[1]
 	}
 
-	if cfg.GCSBucketName != "" && !strings.HasPrefix(pdfPath, "gs://") {
-		if _, err := os.Stat(pdfPath); os.IsNotExist(err) {
-			pdfPath = fmt.Sprintf("gs://%s/%s", cfg.GCSBucketName, pdfPath)
+	// Default to the root of the GCS bucket if no path is provided
+	if pdfPath == "" {
+		if cfg.GCSBucketName != "" {
+			pdfPath = fmt.Sprintf("gs://%s/", cfg.GCSBucketName)
+			fmt.Printf("No path provided. Defaulting to GCS bucket root: %s\n", pdfPath)
+		} else {
+			fmt.Println("Usage: ./ingest [gs://bucket/path/ | ./local/path/ | filename.pdf]")
+			fmt.Println("Error: No ingestion path provided and GCS_BUCKET_NAME_KG is not set.")
+			return
 		}
 	}
 
+	// Resolve PDF paths (recursive if directory/bucket)
 	pdfPaths, err := resolvePaths(ctx, gcsClient, pdfPath)
 	if err != nil {
 		log.Fatalf("Error resolving paths: %v", err)
@@ -214,9 +221,11 @@ func resolvePaths(ctx context.Context, gcsClient *storage.Client, rootPath strin
 				// It's a single file
 				return []string{rootPath}, nil
 			}
+			fmt.Printf("  Debug: Metadata check for '%s' failed: %v\n", prefix, err)
 		}
 
 		// 2. Otherwise, treat as a prefix (folder)
+		fmt.Printf("  Debug: Listing objects with prefix '%s' in bucket '%s'...\n", prefix, bucketName)
 		it := bucket.Objects(ctx, &storage.Query{Prefix: prefix})
 		for {
 			attrs, err := it.Next()
