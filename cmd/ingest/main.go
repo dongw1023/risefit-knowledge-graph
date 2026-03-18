@@ -27,14 +27,22 @@ func main() {
 	}
 
 	apiKey := cfg.GoogleAPIKey
+	apiKeyName := "GOOGLE_API_KEY"
 	model := ""
 	if cfg.EmbeddingProvider == string(vectorstore.ProviderOpenAI) {
 		apiKey = cfg.OpenAIAPIKey
+		apiKeyName = "OPENAI_API_KEY"
 		model = cfg.OpenAIEmbeddingModel
 	}
 
-	if apiKey == "" || cfg.QdrantURL == "" || cfg.QdrantCollectionName == "" {
-		log.Fatalf("Required environment variables (API_KEY, QDRANT_URL, QDRANT_COLLECTION_NAME) are not set for provider %s", cfg.EmbeddingProvider)
+	if apiKey == "" {
+		log.Fatalf("Config error: %s is required for provider %s", apiKeyName, cfg.EmbeddingProvider)
+	}
+	if cfg.QdrantURL == "" {
+		log.Fatal("Config error: QDRANT_URL is required")
+	}
+	if cfg.QdrantCollectionName == "" {
+		log.Fatal("Config error: QDRANT_COLLECTION_NAME is required")
 	}
 
 	ctx := context.Background()
