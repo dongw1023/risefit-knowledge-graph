@@ -6,9 +6,11 @@ import (
 	"log"
 	"os"
 
+	"github.com/google/generative-ai-go/genai"
 	"github.com/joho/godotenv"
 	"github.com/risefit/knowledge-graph/pkg/pdf"
 	"github.com/risefit/knowledge-graph/pkg/vectorstore"
+	googleopt "google.golang.org/api/option"
 )
 
 func main() {
@@ -57,16 +59,32 @@ func main() {
 		log.Fatalf("Error initializing vector store: %v", err)
 	}
 
+	// Initialize Google GenAI Client for PDF Parsing
+	googleAPIKey := os.Getenv("GOOGLE_API_KEY")
+	if googleAPIKey == "" {
+		log.Fatal("GOOGLE_API_KEY is required for PDF parsing")
+	}
+	genaiClient, err := genai.NewClient(ctx, googleopt.WithAPIKey(googleAPIKey))
+	if err != nil {
+		log.Fatalf("Error creating genai client: %v", err)
+	}
+	defer genaiClient.Close()
+
+	parsingModel := os.Getenv("PDF_PARSING_MODEL")
+	if parsingModel == "" {
+		parsingModel = "gemini-2.5-flash"
+	}
+
 	// 2. Process PDF
-	pdfPath := "sample.pdf"
+	pdfPath := "Cover Confirmation.pdf"
 	if len(os.Args) > 1 {
 		pdfPath = os.Args[1]
 	}
 
-	fmt.Printf("Processing PDF: %s using provider: %s\n", pdfPath, provider)
+	fmt.Printf("Processing PDF: %s using provider: %s and parsing model: %s\n", pdfPath, provider, parsingModel)
 
 	// Initialize PDF Processor
-	processor := pdf.NewProcessor(1000, 100)
+	processor := pdf.NewProcessor(genaiClient, parsingModel, 1000, 100)
 
 	docs, err := processor.LoadAndSplit(ctx, pdfPath)
 	if err != nil {
