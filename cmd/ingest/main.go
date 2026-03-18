@@ -189,10 +189,10 @@ func main() {
 
 	fmt.Println("Batch processing complete!")
 }
-
 func resolvePaths(ctx context.Context, gcsClient *storage.Client, rootPath string) ([]string, error) {
 	var paths []string
 
+	// Handle GCS
 	if strings.HasPrefix(rootPath, "gs://") {
 		if gcsClient == nil {
 			return nil, fmt.Errorf("gcs client required for gs:// paths")
@@ -205,19 +205,45 @@ func resolvePaths(ctx context.Context, gcsClient *storage.Client, rootPath strin
 			prefix = parts[1]
 		}
 
-		it := gcsClient.Bucket(bucketName).Objects(ctx, &storage.Query{Prefix: prefix})
+		bucket := gcsClient.Bucket(bucketName)
+
+		// 1. Try treating it as a single object first
+		if prefix != "" && !strings.HasSuffix(prefix, "/") {
+			_, err := bucket.Object(prefix).Attrs(ctx)
+			if err == nil {
+				// It's a single file
+				return []string{rootPath}, nil
+			}
+		}
+
+		// 2. Otherwise, treat as a prefix (folder)
+		it := bucket.Objects(ctx, &storage.Query{Prefix: prefix})
 		for {
 			attrs, err := it.Next()
 			if err == iterator.Done {
 				break
 			}
 			if err != nil {
-				return nil, err
+				return nil, fmt.Errorf("failed to list objects in bucket %s: %w", bucketName, err)
 			}
 			if strings.HasSuffix(strings.ToLower(attrs.Name), ".pdf") {
 				paths = append(paths, fmt.Sprintf("gs://%s/%s", bucketName, attrs.Name))
 			}
 		}
+
+		if len(paths) == 0 {
+			// Diagnostic: List first few items to help debug
+			fmt.Printf("  Debug: No .pdf matches found for prefix '%s'. Listing first 3 items in bucket:\n", prefix)
+			it := bucket.Objects(ctx, &storage.Query{})
+			for i := 0; i < 3; i++ {
+				attrs, err := it.Next()
+				if err != nil {
+					break
+				}
+				fmt.Printf("    - %s\n", attrs.Name)
+			}
+		}
+
 		return paths, nil
 	}
 

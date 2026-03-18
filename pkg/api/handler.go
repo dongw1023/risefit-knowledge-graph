@@ -8,8 +8,16 @@ import (
 )
 
 type SearchRequest struct {
-	Query      string `json:"query"`
-	NumResults int    `json:"num_results"`
+	Query      string          `json:"query"`
+	NumResults int             `json:"num_results"`
+	Filters    MetadataFilters `json:"filters"`
+}
+
+type MetadataFilters struct {
+	Category       string `json:"category,omitempty"`
+	Intent         string `json:"intent,omitempty"`
+	TargetAudience string `json:"target_audience,omitempty"`
+	EvidenceLevel  string `json:"evidence_level,omitempty"`
 }
 
 type SearchResponse struct {
@@ -51,7 +59,14 @@ func (h *Handler) Search(w http.ResponseWriter, r *http.Request) {
 		req.NumResults = 5 // Default
 	}
 
-	docs, err := h.store.SimilaritySearch(r.Context(), req.Query, req.NumResults)
+	filter := vectorstore.Filter{
+		Category:       req.Filters.Category,
+		Intent:         req.Filters.Intent,
+		TargetAudience: req.Filters.TargetAudience,
+		EvidenceLevel:  req.Filters.EvidenceLevel,
+	}
+
+	docs, err := h.store.SimilaritySearch(r.Context(), req.Query, req.NumResults, filter)
 	if err != nil {
 		http.Error(w, "Search failed: "+err.Error(), http.StatusInternalServerError)
 		return

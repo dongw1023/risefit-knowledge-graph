@@ -24,6 +24,13 @@ type EmbedderConfig struct {
 	Model    string
 }
 
+type Filter struct {
+	Category       string
+	Intent         string
+	TargetAudience string
+	EvidenceLevel  string
+}
+
 type Store struct {
 	client                 *qdrant.Client
 	embedder               Embedder
@@ -193,16 +200,39 @@ func (s *Store) AddDocuments(ctx context.Context, docs []schema.Document) error 
 	return nil
 }
 
-func (s *Store) SimilaritySearch(ctx context.Context, query string, numResults int) ([]schema.Document, error) {
+func (s *Store) SimilaritySearch(ctx context.Context, query string, numResults int, filter Filter) ([]schema.Document, error) {
 	embedding, err := s.embedder.EmbedQuery(ctx, query)
 	if err != nil {
 		return nil, fmt.Errorf("failed to embed query: %w", err)
+	}
+
+	var qdrantFilter *qdrant.Filter
+	var conditions []*qdrant.Condition
+
+	if filter.Category != "" {
+		conditions = append(conditions, qdrant.NewMatchKeyword("category", filter.Category))
+	}
+	if filter.Intent != "" {
+		conditions = append(conditions, qdrant.NewMatchKeyword("intent", filter.Intent))
+	}
+	if filter.TargetAudience != "" {
+		conditions = append(conditions, qdrant.NewMatchKeyword("target_audience", filter.TargetAudience))
+	}
+	if filter.EvidenceLevel != "" {
+		conditions = append(conditions, qdrant.NewMatchKeyword("evidence_level", filter.EvidenceLevel))
+	}
+
+	if len(conditions) > 0 {
+		qdrantFilter = &qdrant.Filter{
+			Must: conditions,
+		}
 	}
 
 	res, err := s.client.Query(ctx, &qdrant.QueryPoints{
 		CollectionName: s.collectionName,
 		Query:          qdrant.NewQuery(embedding...),
 		Using:          ptr("dense-vector"),
+		Filter:         qdrantFilter,
 		Limit:          ptr(uint64(numResults)),
 		WithPayload:    qdrant.NewWithPayload(true),
 	})
