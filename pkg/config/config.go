@@ -9,7 +9,9 @@ import (
 type Config struct {
 	EmbeddingProvider        string
 	GoogleAPIKey             string
+	GoogleServiceAccountPath string
 	OpenAIAPIKey             string
+
 	OpenAIEmbeddingModel     string
 	QdrantURL                string
 	QdrantAPIKey             string
@@ -27,6 +29,7 @@ func Load() (*Config, error) {
 	return &Config{
 		EmbeddingProvider:        getEnv("EMBEDDING_PROVIDER", "openai"),
 		GoogleAPIKey:             os.Getenv("GOOGLE_API_KEY"),
+		GoogleServiceAccountPath: os.Getenv("GOOGLE_APPLICATION_CREDENTIALS"),
 		OpenAIAPIKey:             os.Getenv("OPENAI_API_KEY"),
 		OpenAIEmbeddingModel:     getEnv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small"),
 		QdrantURL:                os.Getenv("QDRANT_URL"),

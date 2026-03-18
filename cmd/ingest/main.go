@@ -70,7 +70,13 @@ func main() {
 	defer genaiClient.Close()
 
 	// Initialize GCS Client
-	gcsClient, err := storage.NewClient(ctx, googleopt.WithAPIKey(cfg.GoogleAPIKey))
+	var gcsOpts []googleopt.ClientOption
+	if cfg.GoogleServiceAccountPath != "" {
+		gcsOpts = append(gcsOpts, googleopt.WithCredentialsFile(cfg.GoogleServiceAccountPath))
+	}
+	// Note: We don't use WithAPIKey for GCS because 'list' operations are usually blocked for API Keys.
+	// If GoogleServiceAccountPath is empty, storage.NewClient will automatically use Application Default Credentials.
+	gcsClient, err := storage.NewClient(ctx, gcsOpts...)
 	if err != nil {
 		log.Fatalf("Error creating gcs client: %v", err)
 	}
