@@ -97,15 +97,17 @@ func (s *Store) GetDocumentRecord(ctx context.Context, id string) (*schema.Docum
 
 	p := points[0].Payload
 	record := &schema.DocumentRecord{
-		ID:            id,
-		DocumentTitle: p["document_title"].GetStringValue(),
-		Path:          p["path"].GetStringValue(),
-		Category:      p["category"].GetStringValue(),
-		Topic:         p["topic"].GetStringValue(),
-		Status:        p["status"].GetStringValue(),
-		PageCount:     int(p["page_count"].GetIntegerValue()),
-		CreatedAt:     p["created_at"].GetStringValue(),
-		UpdatedAt:     p["updated_at"].GetStringValue(),
+		ID:             id,
+		DocumentTitle:  p["document_title"].GetStringValue(),
+		Path:           p["path"].GetStringValue(),
+		Category:       p["category"].GetStringValue(),
+		Intent:         p["intent"].GetStringValue(),
+		TargetAudience: p["target_audience"].GetStringValue(),
+		EvidenceLevel:  p["evidence_level"].GetStringValue(),
+		Status:         p["status"].GetStringValue(),
+		PageCount:      int(p["page_count"].GetIntegerValue()),
+		CreatedAt:      p["created_at"].GetStringValue(),
+		UpdatedAt:      p["updated_at"].GetStringValue(),
 	}
 
 	return record, nil
@@ -117,14 +119,16 @@ func (s *Store) UpsertDocumentRecord(ctx context.Context, record schema.Document
 	}
 
 	payload := map[string]any{
-		"document_title": record.DocumentTitle,
-		"path":           record.Path,
-		"category":       record.Category,
-		"topic":          record.Topic,
-		"status":         record.Status,
-		"page_count":     record.PageCount,
-		"created_at":     record.CreatedAt,
-		"updated_at":     record.UpdatedAt,
+		"document_title":  record.DocumentTitle,
+		"path":            record.Path,
+		"category":        record.Category,
+		"intent":          record.Intent,
+		"target_audience": record.TargetAudience,
+		"evidence_level":  record.EvidenceLevel,
+		"status":          record.Status,
+		"page_count":      record.PageCount,
+		"created_at":      record.CreatedAt,
+		"updated_at":      record.UpdatedAt,
 	}
 
 	for k, v := range record.Metadata {

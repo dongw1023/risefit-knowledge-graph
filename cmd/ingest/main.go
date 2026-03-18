@@ -131,29 +131,41 @@ func main() {
 			log.Printf("  Error adding %s to store: %v", path, err)
 			continue
 		}
-
+		// Final Registry Update
 		category := "uncategorized"
-		topic := "general"
+		intent := "general_guidance"
+		target := "general"
+		evidence := "textbook"
+
 		if len(docs) > 0 {
-			if cat, ok := docs[0].Metadata["category"].(string); ok {
-				category = cat
+			if v, ok := docs[0].Metadata["category"].(string); ok {
+				category = v
 			}
-			if top, ok := docs[0].Metadata["topic"].(string); ok {
-				topic = top
+			if v, ok := docs[0].Metadata["intent"].(string); ok {
+				intent = v
+			}
+			if v, ok := docs[0].Metadata["target_audience"].(string); ok {
+				target = v
+			}
+			if v, ok := docs[0].Metadata["evidence_level"].(string); ok {
+				evidence = v
 			}
 		}
 
 		err = store.UpsertDocumentRecord(ctx, schema.DocumentRecord{
-			ID:            docID,
-			DocumentTitle: docTitle,
-			Path:          path,
-			Category:      category,
-			Topic:         topic,
-			Status:        "completed",
-			PageCount:     len(docs),
-			CreatedAt:     now,
-			UpdatedAt:     now,
+			ID:             docID,
+			DocumentTitle:  docTitle,
+			Path:           path,
+			Category:       category,
+			Intent:         intent,
+			TargetAudience: target,
+			EvidenceLevel:  evidence,
+			Status:         "completed",
+			PageCount:      len(docs),
+			CreatedAt:      now,
+			UpdatedAt:      now,
 		})
+
 		if err != nil {
 			log.Printf("  Warning: failed to update registry for %s: %v", path, err)
 		}
