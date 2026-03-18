@@ -25,12 +25,13 @@ type EmbedderConfig struct {
 }
 
 type Store struct {
-	client         *qdrant.Client
-	embedder       Embedder
-	collectionName string
+	client                 *qdrant.Client
+	embedder               Embedder
+	collectionName         string
+	registryCollectionName string
 }
 
-func NewQdrantStore(ctx context.Context, embedConfig EmbedderConfig, qdrantURLStr, qdrantAPIKey, collectionName string) (*Store, error) {
+func NewQdrantStore(ctx context.Context, embedConfig EmbedderConfig, qdrantURLStr, qdrantAPIKey, collectionName, registryCollection string) (*Store, error) {
 	var embedder Embedder
 	var err error
 
@@ -69,10 +70,81 @@ func NewQdrantStore(ctx context.Context, embedConfig EmbedderConfig, qdrantURLSt
 	}
 
 	return &Store{
-		client:         client,
-		embedder:       embedder,
-		collectionName: collectionName,
+		client:                 client,
+		embedder:               embedder,
+		collectionName:         collectionName,
+		registryCollectionName: registryCollection,
 	}, nil
+}
+
+func (s *Store) GetDocumentRecord(ctx context.Context, id string) (*schema.DocumentRecord, error) {
+	if s.registryCollectionName == "" {
+		return nil, nil // No registry configured
+	}
+
+	points, err := s.client.Get(ctx, &qdrant.GetPoints{
+		CollectionName: s.registryCollectionName,
+		Ids:            []*qdrant.PointId{qdrant.NewIDUUID(id)},
+		WithPayload:    qdrant.NewWithPayload(true),
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	if len(points) == 0 {
+		return nil, nil // Not found
+	}
+
+	p := points[0].Payload
+	record := &schema.DocumentRecord{
+		ID:            id,
+		DocumentTitle: p["document_title"].GetStringValue(),
+		Path:          p["path"].GetStringValue(),
+		Category:      p["category"].GetStringValue(),
+		Topic:         p["topic"].GetStringValue(),
+		Status:        p["status"].GetStringValue(),
+		PageCount:     int(p["page_count"].GetIntegerValue()),
+		CreatedAt:     p["created_at"].GetStringValue(),
+		UpdatedAt:     p["updated_at"].GetStringValue(),
+	}
+
+	return record, nil
+}
+
+func (s *Store) UpsertDocumentRecord(ctx context.Context, record schema.DocumentRecord) error {
+	if s.registryCollectionName == "" {
+		return nil // No registry configured
+	}
+
+	payload := map[string]any{
+		"document_title": record.DocumentTitle,
+		"path":           record.Path,
+		"category":       record.Category,
+		"topic":          record.Topic,
+		"status":         record.Status,
+		"page_count":     record.PageCount,
+		"created_at":     record.CreatedAt,
+		"updated_at":     record.UpdatedAt,
+	}
+
+	for k, v := range record.Metadata {
+		payload[k] = v
+	}
+
+	_, err := s.client.Upsert(ctx, &qdrant.UpsertPoints{
+		CollectionName: s.registryCollectionName,
+		Points: []*qdrant.PointStruct{
+			{
+				Id:      qdrant.NewIDUUID(record.ID),
+				Payload: qdrant.NewValueMap(payload),
+				Vectors: qdrant.NewVectorsMap(map[string]*qdrant.Vector{
+					"none": qdrant.NewVector(0), // Dummy single-dim vector
+				}),
+			},
+		},
+	})
+
+	return err
 }
 
 func (s *Store) AddDocuments(ctx context.Context, docs []schema.Document) error {

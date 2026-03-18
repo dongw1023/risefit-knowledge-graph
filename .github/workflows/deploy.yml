@@ -13,11 +13,16 @@ env:
   INFRA_REPO: dongw1023/risefit-infra
 
 jobs:
-  build-and-update-infra:
+  build-and-push:
     runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ github.sha }}
+    strategy:
+      matrix:
+        target: [server, ingest]
     steps:
       - name: Checkout Application Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       # Authenticate to Google Cloud
       - id: auth
@@ -26,46 +31,44 @@ jobs:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       # Configure Docker
-      - run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
+      - name: Configure Docker for GAR
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
 
-      # Build and Push image, using commit SHA as the tag
+      # Build and Push image using the specific target from Dockerfile
       - name: Build and Push Docker Image
-        id: docker_build
         run: |
-          docker build -t "${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}" .
-          docker push "${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}:${{ github.sha }}"
-          # Modern syntax for setting outputs
-          echo "image_tag=${{ github.sha }}" >> $GITHUB_OUTPUT
+          IMAGE_PATH="${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.REPOSITORY }}/${{ env.SERVICE_NAME }}-${{ matrix.target }}"
+          docker build --target ${{ matrix.target }} -t "$IMAGE_PATH:${{ github.sha }}" -t "$IMAGE_PATH:latest" .
+          docker push "$IMAGE_PATH:${{ github.sha }}"
+          docker push "$IMAGE_PATH:latest"
 
+  update-infra:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
       - name: Checkout Infrastructure Repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
           repository: ${{ env.INFRA_REPO }}
-          path: risefit-infra
           ssh-key: ${{ secrets.INFRA_DEPLOY_KEY }}
 
       - name: Update and Commit Infrastructure Configuration
         run: |
-          # --- Configuration ---
           TARGET_ENV="staging"
-          SERVICE_NAME="${{ env.SERVICE_NAME }}"
-          NEW_TAG="${{ steps.docker_build.outputs.image_tag }}"
-          
-          cd risefit-infra
-          
-          TF_VAR_NAME="${SERVICE_NAME//-/_}_image_tag"
+          NEW_TAG="${{ github.sha }}"
           TFVARS_FILE="$TARGET_ENV/terraform.tfvars"
           
-          echo "Updating $TF_VAR_NAME in $TFVARS_FILE to tag $NEW_TAG"
+          # Use SERVICE_NAME prefix for TF vars (convert - to _)
+          # Example: risefit_knowledge_graph_server_image_tag
+          PREFIX="${{ env.SERVICE_NAME }}"
+          PREFIX="${PREFIX//-/_}"
           
-          # Use sed to safely update the variable in the .tfvars file.
-          # This replaces the line starting with TF_VAR_NAME with the new value.
-          sed -i "s/^$TF_VAR_NAME.*/$TF_VAR_NAME = \"$NEW_TAG\"/" "$TFVARS_FILE"
+          sed -i "s/^${PREFIX}_server_image_tag.*/${PREFIX}_server_image_tag = \"$NEW_TAG\"/" "$TFVARS_FILE"
+          sed -i "s/^${PREFIX}_ingest_image_tag.*/${PREFIX}_ingest_image_tag = \"$NEW_TAG\"/" "$TFVARS_FILE"
           
           echo "Updated $TFVARS_FILE content:"
           cat "$TFVARS_FILE"
           
-          # Git configuration and push
           git config --global user.name 'GitHub Actions'
           git config --global user.email 'github-actions@github.com'
           git add "$TFVARS_FILE"
@@ -73,6 +76,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "No changes to commit."
           else
-            git commit -m "Update $SERVICE_NAME image in $TARGET_ENV to $NEW_TAG"
+            git commit -m "Update risefit images in $TARGET_ENV to $NEW_TAG"
             git push
           fi

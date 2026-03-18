@@ -1,0 +1,14 @@
+services:
+  server:
+    build: .
+    restart: always
+    ports:
+      - "8080:8080"
+    env_file: .env
+    container_name: risefit-api-server
+
+  ingest-job:
+    build: .
+    profiles: ["job"]
+    env_file: .env
+    command: ["./ingest"] # You can override this: docker compose run ingest-job ./ingest gs://bucket/topic

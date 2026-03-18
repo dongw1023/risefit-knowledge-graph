@@ -39,6 +39,7 @@ func main() {
 	qdrantURL := os.Getenv("QDRANT_URL")
 	qdrantAPIKey := os.Getenv("QDRANT_API_KEY")
 	collectionName := os.Getenv("QDRANT_COLLECTION_NAME")
+	registryCollection := os.Getenv("QDRANT_REGISTRY_COLLECTION")
 
 	if apiKey == "" || qdrantURL == "" || collectionName == "" {
 		log.Fatalf("Required environment variables (API_KEY, QDRANT_URL, QDRANT_COLLECTION_NAME) are not set for provider %s", provider)
@@ -53,7 +54,7 @@ func main() {
 		Model:    model,
 	}
 
-	store, err := vectorstore.NewQdrantStore(ctx, embedConfig, qdrantURL, qdrantAPIKey, collectionName)
+	store, err := vectorstore.NewQdrantStore(ctx, embedConfig, qdrantURL, qdrantAPIKey, collectionName, registryCollection)
 	if err != nil {
 		log.Fatalf("Error initializing vector store: %v", err)
 	}

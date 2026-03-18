@@ -6,3 +6,17 @@ type Document struct {
 	Metadata    map[string]any
 	Score       float32
 }
+
+// DocumentRecord represents document-level metadata for the registry.
+type DocumentRecord struct {
+	ID            string         `json:"id"`
+	DocumentTitle string         `json:"document_title"`
+	Path          string         `json:"path"`
+	Category      string         `json:"category"`
+	Topic         string         `json:"topic"`
+	Status        string         `json:"status"` // e.g., "processing", "completed", "failed"
+	PageCount     int            `json:"page_count"`
+	CreatedAt     string         `json:"created_at"`
+	UpdatedAt     string         `json:"updated_at"`
+	Metadata      map[string]any `json:"metadata"`
+}
