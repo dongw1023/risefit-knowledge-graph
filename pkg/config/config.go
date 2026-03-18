@@ -33,9 +33,10 @@ func Load() (*Config, error) {
 		QdrantAPIKey:             os.Getenv("QDRANT_API_KEY"),
 		QdrantCollectionName:     getEnv("QDRANT_COLLECTION_NAME", "risefit_content_v1"),
 		QdrantRegistryCollection: getEnv("QDRANT_REGISTRY_COLLECTION", "risefit_registry"),
-		GCSBucketName:            getEnv("GCS_BUCKET_NAME", " risefit-documents"),
+		GCSBucketName:            getEnv("GCS_BUCKET_NAME_KG", "risefit-documents"),
 		PDFParsingModel:          getEnv("PDF_PARSING_MODEL", "gemini-2.5-flash"),
-		Port:                     getEnv("PORT", "8080"),
+
+		Port: getEnv("PORT", "8080"),
 	}, nil
 }
 
