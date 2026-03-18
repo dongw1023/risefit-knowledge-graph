@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"cloud.google.com/go/storage"
 	"github.com/google/generative-ai-go/genai"
 	"github.com/pdfcpu/pdfcpu/pkg/api"
+	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 	"github.com/risefit/knowledge-graph/pkg/schema"
 )
 
@@ -37,7 +39,6 @@ func (p *Processor) LoadAndSplit(ctx context.Context, pdfPath string) ([]schema.
 	localPath := pdfPath
 	var isTemp bool
 
-	// Handle GCS paths
 	if strings.HasPrefix(pdfPath, "gs://") {
 		fmt.Printf("Downloading PDF from GCS: %s...\n", pdfPath)
 		var err error
@@ -54,43 +55,47 @@ func (p *Processor) LoadAndSplit(ctx context.Context, pdfPath string) ([]schema.
 
 	fmt.Printf("Splitting PDF by pages and parsing with Gemini: %s...\n", localPath)
 
-	// 1. Create temporary directory for single-page PDFs
 	tempDir, err := os.MkdirTemp("", "pdf-pages-*")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp dir: %w", err)
 	}
-	defer os.RemoveAll(tempDir) // Ensure we clean up
+	defer os.RemoveAll(tempDir)
 
-	// 2. Extract pages using pdfcpu
-	err = api.SplitFile(localPath, tempDir, 1, nil)
+	// Use permissive configuration to handle papers with "invalid" metadata
+	conf := model.NewDefaultConfiguration()
+	conf.ValidationMode = model.ValidationRelaxed
+
+	err = api.SplitFile(localPath, tempDir, 1, conf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to split pdf: %w", err)
 	}
 
-	// 3. Find all generated page files
 	files, err := os.ReadDir(tempDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read temp dir: %w", err)
 	}
 
-	// Extract filename and initial tags from path
 	docTitle := filepath.Base(pdfPath)
 	category, _ := p.extractTags(pdfPath)
 
 	var allDocs []schema.Document
 	var smartCategory, smartIntent, smartTarget, smartEvidence string
 
-	// Iterate through each page
-	for i, f := range files {
+	// Regex to find page number in pdfcpu output (usually "name_1.pdf")
+	re := regexp.MustCompile(`_(\d+)\.pdf$`)
+
+	for _, f := range files {
 		if f.IsDir() || !strings.HasSuffix(f.Name(), ".pdf") {
 			continue
 		}
 
 		pagePath := filepath.Join(tempDir, f.Name())
 
-		// Extract page number
-		pageNoStr := strings.TrimSuffix(strings.TrimPrefix(f.Name(), strings.TrimSuffix(docTitle, ".pdf")+"_"), ".pdf")
-		pageNo, _ := strconv.Atoi(pageNoStr)
+		pageNo := 0
+		match := re.FindStringSubmatch(f.Name())
+		if len(match) > 1 {
+			pageNo, _ = strconv.Atoi(match[1])
+		}
 
 		fmt.Printf("  Parsing page %d...\n", pageNo)
 
@@ -100,8 +105,7 @@ func (p *Processor) LoadAndSplit(ctx context.Context, pdfPath string) ([]schema.
 			continue
 		}
 
-		// --- SMART TAGGING: Use first page content to categorize into 4 dimensions ---
-		if i == 0 || (smartCategory == "" && pageContent != "") {
+		if smartCategory == "" && pageContent != "" {
 			fmt.Printf("  Analyzing document dimensions...\n")
 			smartCategory, smartIntent, smartTarget, smartEvidence = p.smartCategorize(ctx, pageContent)
 			if smartCategory != "" {
@@ -136,27 +140,27 @@ func (p *Processor) smartCategorize(ctx context.Context, firstPageContent string
 Assign exactly one tag for each of the four dimensions below.
 
 Dimension 1: Category (Core Topic)
-- hypertrophy (増肌机制)
-- fat_loss (减脂与能量消耗)
-- nutrition (营养与补剂)
-- biomechanics (生物力学与动作)
-- recovery (恢复与睡眠)
+- hypertrophy
+- fat_loss
+- nutrition
+- biomechanics
+- recovery
 
 Dimension 2: Intent (Trigger Intent)
-- programming (用于生成或调整训练计划)
-- myth_busting (用于反驳用户的伪科学言论)
-- form_correction (用于纠正动作姿态)
-- general_guidance (用于日常知识问答)
+- programming
+- myth_busting
+- form_correction
+- general_guidance
 
 Dimension 3: Target Audience
-- general (所有人)
-- female (女性专属)
-- special_population (老人、高血压、孕妇等)
+- general
+- female
+- special_population
 
 Dimension 4: Evidence Level
-- position_stand (官方立场声明, 最高优先级)
-- meta_analysis (元分析综述, 高级优先级)
-- textbook (教材基础理论, 兜底解释)
+- position_stand
+- meta_analysis
+- textbook
 
 Return the result strictly in this format: CATEGORY|INTENT|TARGET|EVIDENCE
 Example: hypertrophy|programming|general|meta_analysis
@@ -178,7 +182,6 @@ Text:
 		result = string(part)
 	}
 
-	// Parse "CATEGORY|INTENT|TARGET|EVIDENCE"
 	parts := strings.Split(strings.TrimSpace(result), "|")
 
 	cat := "uncategorized"
@@ -205,7 +208,6 @@ Text:
 func (p *Processor) extractTags(path string) (string, string) {
 	cleanPath := path
 	if strings.HasPrefix(path, "gs://") {
-		// gs://bucket/category/topic/file.pdf -> category/topic/file.pdf
 		parts := strings.SplitN(strings.TrimPrefix(path, "gs://"), "/", 2)
 		if len(parts) < 2 {
 			return "unknown", "unknown"
@@ -218,9 +220,7 @@ func (p *Processor) extractTags(path string) (string, string) {
 		return "uncategorized", "general"
 	}
 
-	// Split the directory into parts
 	parts := strings.Split(filepath.ToSlash(dir), "/")
-
 	category := "uncategorized"
 	topic := "general"
 
@@ -273,7 +273,6 @@ func (p *Processor) downloadFromGCS(ctx context.Context, gcsPath string) (string
 		return "", fmt.Errorf("gcs client not initialized")
 	}
 
-	// gs://bucket/path/to/file
 	path := strings.TrimPrefix(gcsPath, "gs://")
 	parts := strings.SplitN(path, "/", 2)
 	if len(parts) < 2 {
@@ -291,7 +290,6 @@ func (p *Processor) downloadFromGCS(ctx context.Context, gcsPath string) (string
 	}
 	defer r.Close()
 
-	// Create a temp file
 	tmpFile, err := os.CreateTemp("", "gcs-pdf-*.pdf")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp file: %w", err)
