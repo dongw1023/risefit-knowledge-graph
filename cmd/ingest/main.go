@@ -132,13 +132,15 @@ func main() {
 		docs, err := processor.LoadAndSplit(ctx, path)
 		if err != nil {
 			log.Printf("  Error processing %s: %v", path, err)
-			store.UpsertDocumentRecord(ctx, schema.DocumentRecord{
-				ID:            docID,
-				DocumentTitle: docTitle,
-				Path:          path,
-				Status:        "failed",
-				UpdatedAt:     now,
-			})
+			if cfg.QdrantRegistryCollection != "" {
+				store.UpsertDocumentRecord(ctx, schema.DocumentRecord{
+					ID:            docID,
+					DocumentTitle: docTitle,
+					Path:          path,
+					Status:        "failed",
+					UpdatedAt:     now,
+				})
+			}
 			continue
 		}
 
