@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -40,13 +41,15 @@ func (p *Processor) LoadAndSplit(ctx context.Context, pdfPath string) ([]schema.
 	var isTemp bool
 
 	if strings.HasPrefix(pdfPath, "gs://") {
-		fmt.Printf("Downloading PDF from GCS: %s...\n", pdfPath)
+		log.Printf("Downloading PDF from GCS: %s...", pdfPath)
 		var err error
 		localPath, err = p.downloadFromGCS(ctx, pdfPath)
 		if err != nil {
+			log.Printf("Failed to download %s: %v", pdfPath, err)
 			return nil, fmt.Errorf("failed to download from GCS: %w", err)
 		}
 		isTemp = true
+		log.Printf("Downloaded to local temp file: %s", localPath)
 	}
 
 	if isTemp {
@@ -54,34 +57,37 @@ func (p *Processor) LoadAndSplit(ctx context.Context, pdfPath string) ([]schema.
 	}
 
 	docTitle := filepath.Base(pdfPath)
-	fmt.Printf("Processing: %s\n", docTitle)
+	log.Printf("Processing document: %s", docTitle)
 
 	// 1. Prepare Temporary Directories
 	tempDir, err := os.MkdirTemp("", "pdf-pages-*")
 	if err != nil {
+		log.Printf("Failed to create temp dir: %v", err)
 		return nil, fmt.Errorf("failed to create temp dir: %w", err)
 	}
 	defer os.RemoveAll(tempDir)
+	log.Printf("Using temp dir for splitting: %s", tempDir)
 
 	// 2. Optimized Splitting Logic
 	conf := model.NewDefaultConfiguration()
 	conf.ValidationMode = model.ValidationRelaxed
 
 	// Attempt to Optimize/Repair the PDF first.
-	// This often fixes the "invalid dict entry: XMP" errors found in scientific papers.
-	fmt.Printf("  Cleaning and splitting PDF locally...\n")
+	log.Printf("Cleaning and splitting PDF locally: %s", localPath)
 	optimizedPath := localPath + ".opt"
 	err = api.OptimizeFile(localPath, optimizedPath, conf)
 	if err == nil {
 		localPath = optimizedPath
 		defer os.Remove(optimizedPath)
+		log.Printf("Optimization successful")
 	} else {
-		fmt.Printf("  Note: Optimization skipped (%v), attempting direct split...\n", err)
+		log.Printf("Optimization skipped (%v), attempting direct split...", err)
 	}
 
 	// Now split the (potentially cleaned) file
 	err = api.SplitFile(localPath, tempDir, 1, conf)
 	if err != nil {
+		log.Printf("Split failed: %v", err)
 		return nil, fmt.Errorf("failed to split PDF locally: %w. Please check if the PDF is password protected or corrupted", err)
 	}
 
@@ -90,6 +96,8 @@ func (p *Processor) LoadAndSplit(ctx context.Context, pdfPath string) ([]schema.
 	if err != nil {
 		return nil, err
 	}
+
+	log.Printf("Split into %d pages", len(files))
 
 	var allDocs []schema.Document
 	var smartCategory, smartIntent, smartTarget, smartEvidence string
@@ -107,21 +115,22 @@ func (p *Processor) LoadAndSplit(ctx context.Context, pdfPath string) ([]schema.
 			pageNo, _ = strconv.Atoi(match[1])
 		}
 
-		fmt.Printf("  Parsing page %d with Gemini...\n", pageNo)
+		log.Printf("Parsing page %d with Gemini (path: %s)...", pageNo, pagePath)
 		pageContent, err := p.extractPageWithGemini(ctx, pagePath)
 		if err != nil {
-			fmt.Printf("  Warning: failed to parse page %d: %v\n", pageNo, err)
+			log.Printf("Warning: failed to parse page %d: %v", pageNo, err)
 			continue
 		}
+		log.Printf("Successfully parsed page %d (%d characters)", pageNo, len(pageContent))
 
 		// Analyze dimensions from the first successful page parse
 		if smartCategory == "" && pageContent != "" {
-			fmt.Printf("  Determining document type and topic...\n")
+			log.Printf("Determining document type and topic from first page...")
 			smartCategory, smartIntent, smartTarget, smartEvidence = p.smartCategorize(ctx, pageContent)
 			if smartCategory != "" {
 				category = smartCategory
 			}
-			fmt.Printf("  Smart Tags: category=%s, intent=%s, target=%s, evidence=%s\n", category, smartIntent, smartTarget, smartEvidence)
+			log.Printf("Smart Tags: category=%s, intent=%s, target=%s, evidence=%s", category, smartIntent, smartTarget, smartEvidence)
 		}
 
 		now := time.Now().Format(time.RFC3339)
@@ -140,6 +149,7 @@ func (p *Processor) LoadAndSplit(ctx context.Context, pdfPath string) ([]schema.
 		})
 	}
 
+	log.Printf("Finished processing %s: %d pages extracted", docTitle, len(allDocs))
 	return allDocs, nil
 }
 
@@ -170,7 +180,11 @@ func (p *Processor) extractPageWithGemini(ctx context.Context, pagePath string) 
 			builder.WriteString(string(text))
 		}
 	}
-	return builder.String(), nil
+	content := builder.String()
+	if content == "" {
+		log.Printf("Gemini returned empty text for %s", pagePath)
+	}
+	return content, nil
 }
 
 func (p *Processor) smartCategorize(ctx context.Context, firstPageContent string) (string, string, string, string) {
@@ -188,12 +202,15 @@ Return format: CATEGORY|INTENT|TARGET|EVIDENCE
 Text:
 %s`, firstPageContent)
 
+	log.Printf("Calling Gemini for smart categorization...")
 	resp, err := model.GenerateContent(ctx, genai.Text(prompt))
 	if err != nil {
+		log.Printf("Smart categorization failed: %v", err)
 		return "", "", "", ""
 	}
 
 	if len(resp.Candidates) == 0 || len(resp.Candidates[0].Content.Parts) == 0 {
+		log.Printf("Smart categorization returned no candidates")
 		return "", "", "", ""
 	}
 
@@ -201,6 +218,7 @@ Text:
 	if part, ok := resp.Candidates[0].Content.Parts[0].(genai.Text); ok {
 		result = string(part)
 	}
+	log.Printf("Smart categorization raw result: %q", result)
 
 	parts := strings.Split(strings.TrimSpace(result), "|")
 	cat, intent, target, evidence := "uncategorized", "general_guidance", "general", "textbook"

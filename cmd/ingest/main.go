@@ -115,13 +115,14 @@ func main() {
 	processor := pdf.NewProcessor(genaiClient, gcsClient, cfg.PDFParsingModel)
 
 	for i, path := range pdfPaths {
-		fmt.Printf("[%d/%d] Processing: %s\n", i+1, len(pdfPaths), path)
+		log.Printf("[%d/%d] Starting processing for: %s", i+1, len(pdfPaths), path)
 		docID := fmt.Sprintf("%x", md5.Sum([]byte(path)))
+		log.Printf("Document ID: %s", docID)
 
 		if cfg.QdrantRegistryCollection != "" {
 			record, err := store.GetDocumentRecord(ctx, docID)
 			if err == nil && record != nil && record.Status == "completed" {
-				fmt.Printf("  Already processed (status: completed), skipping.\n")
+				log.Printf("Document %s already processed (status: completed), skipping.", path)
 				continue
 			}
 		}
@@ -131,7 +132,7 @@ func main() {
 
 		docs, err := processor.LoadAndSplit(ctx, path)
 		if err != nil {
-			log.Printf("  Error processing %s: %v", path, err)
+			log.Printf("Error processing %s: %v", path, err)
 			if cfg.QdrantRegistryCollection != "" {
 				store.UpsertDocumentRecord(ctx, schema.DocumentRecord{
 					ID:            docID,
@@ -145,13 +146,14 @@ func main() {
 		}
 
 		if len(docs) == 0 {
-			log.Printf("  No content extracted from %s", path)
+			log.Printf("No content extracted from %s", path)
 			continue
 		}
 
+		log.Printf("Extracted %d pages from %s, adding to vector store...", len(docs), path)
 		err = store.AddDocuments(ctx, docs)
 		if err != nil {
-			log.Printf("  Error adding %s to store: %v", path, err)
+			log.Printf("Error adding %s to store: %v", path, err)
 			continue
 		}
 		// Final Registry Update
@@ -175,6 +177,7 @@ func main() {
 			}
 		}
 
+		log.Printf("Updating registry for %s with status: completed", path)
 		err = store.UpsertDocumentRecord(ctx, schema.DocumentRecord{
 			ID:             docID,
 			DocumentTitle:  docTitle,
@@ -190,10 +193,10 @@ func main() {
 		})
 
 		if err != nil {
-			log.Printf("  Warning: failed to update registry for %s: %v", path, err)
+			log.Printf("Warning: failed to update registry for %s: %v", path, err)
 		}
 
-		fmt.Printf("  Successfully stored %d pages\n", len(docs))
+		log.Printf("Successfully finished processing %s", path)
 	}
 
 	fmt.Println("Batch processing complete!")

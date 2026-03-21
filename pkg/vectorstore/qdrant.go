@@ -3,6 +3,7 @@ package vectorstore
 import (
 	"context"
 	"fmt"
+	"log"
 	"net/url"
 	"strconv"
 
@@ -89,16 +90,19 @@ func (s *Store) GetDocumentRecord(ctx context.Context, id string) (*schema.Docum
 		return nil, nil // No registry configured
 	}
 
+	log.Printf("Getting document record for ID: %s", id)
 	points, err := s.client.Get(ctx, &qdrant.GetPoints{
 		CollectionName: s.registryCollectionName,
 		Ids:            []*qdrant.PointId{qdrant.NewIDUUID(id)},
 		WithPayload:    qdrant.NewWithPayload(true),
 	})
 	if err != nil {
+		log.Printf("Failed to get document record %s: %v", id, err)
 		return nil, err
 	}
 
 	if len(points) == 0 {
+		log.Printf("Document record %s not found", id)
 		return nil, nil // Not found
 	}
 
@@ -117,6 +121,7 @@ func (s *Store) GetDocumentRecord(ctx context.Context, id string) (*schema.Docum
 		UpdatedAt:      p["updated_at"].GetStringValue(),
 	}
 
+	log.Printf("Found document record: %s (status: %s)", record.DocumentTitle, record.Status)
 	return record, nil
 }
 
@@ -125,6 +130,7 @@ func (s *Store) UpsertDocumentRecord(ctx context.Context, record schema.Document
 		return nil // No registry configured
 	}
 
+	log.Printf("Upserting document record: %s (status: %s)", record.DocumentTitle, record.Status)
 	payload := map[string]any{
 		"document_title":  record.DocumentTitle,
 		"path":            record.Path,
@@ -155,6 +161,10 @@ func (s *Store) UpsertDocumentRecord(ctx context.Context, record schema.Document
 		},
 	})
 
+	if err != nil {
+		log.Printf("Failed to upsert document record %s: %v", record.ID, err)
+	}
+
 	return err
 }
 
@@ -162,13 +172,16 @@ func (s *Store) AddDocuments(ctx context.Context, docs []schema.Document) error 
 	if len(docs) == 0 {
 		return nil
 	}
+	log.Printf("Adding %d documents to collection %s", len(docs), s.collectionName)
 	texts := make([]string, len(docs))
 	for i, doc := range docs {
 		texts[i] = doc.PageContent
 	}
 
+	log.Printf("Embedding %d documents...", len(texts))
 	embeddings, err := s.embedder.EmbedDocuments(ctx, texts)
 	if err != nil {
+		log.Printf("Failed to embed documents: %v", err)
 		return fmt.Errorf("failed to embed documents: %w", err)
 	}
 
@@ -189,20 +202,25 @@ func (s *Store) AddDocuments(ctx context.Context, docs []schema.Document) error 
 		}
 	}
 
+	log.Printf("Upserting %d points to Qdrant...", len(points))
 	_, err = s.client.Upsert(ctx, &qdrant.UpsertPoints{
 		CollectionName: s.collectionName,
 		Points:         points,
 	})
 	if err != nil {
+		log.Printf("Failed to upsert points: %v", err)
 		return fmt.Errorf("failed to upsert points to qdrant: %w", err)
 	}
 
+	log.Printf("Successfully added %d documents", len(docs))
 	return nil
 }
 
 func (s *Store) SimilaritySearch(ctx context.Context, query string, numResults int, filter Filter) ([]schema.Document, error) {
+	log.Printf("Similarity search: query=%q, limit=%d, filter=%+v", query, numResults, filter)
 	embedding, err := s.embedder.EmbedQuery(ctx, query)
 	if err != nil {
+		log.Printf("Failed to embed query: %v", err)
 		return nil, fmt.Errorf("failed to embed query: %w", err)
 	}
 
@@ -228,6 +246,7 @@ func (s *Store) SimilaritySearch(ctx context.Context, query string, numResults i
 		}
 	}
 
+	log.Printf("Querying Qdrant collection %s...", s.collectionName)
 	res, err := s.client.Query(ctx, &qdrant.QueryPoints{
 		CollectionName: s.collectionName,
 		Query:          qdrant.NewQuery(embedding...),
@@ -237,9 +256,11 @@ func (s *Store) SimilaritySearch(ctx context.Context, query string, numResults i
 		WithPayload:    qdrant.NewWithPayload(true),
 	})
 	if err != nil {
+		log.Printf("Failed to query Qdrant: %v", err)
 		return nil, fmt.Errorf("failed to query qdrant: %w", err)
 	}
 
+	log.Printf("Qdrant returned %d results", len(res))
 	docs := make([]schema.Document, len(res))
 	for i, point := range res {
 		payload := point.Payload
