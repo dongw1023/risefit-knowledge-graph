@@ -39,7 +39,7 @@ func Load() (*Config, error) {
 		GCSBucketName:            getEnv("GCS_BUCKET_NAME_KG", "risefit-documents"),
 		PDFParsingModel:          getEnv("PDF_PARSING_MODEL", "gemini-2.5-flash"),
 
-		Port: getEnv("PORT", "8080"),
+		Port: getEnv("PORT", "8000"),
 	}, nil
 }
 
