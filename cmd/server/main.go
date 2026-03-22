@@ -52,7 +52,7 @@ func main() {
 
 	// 2. Start API Server
 	handler := api.NewHandler(store)
-	http.HandleFunc("/search", handler.Search)
+	http.HandleFunc("/v1/search", handler.Search)
 
 	fmt.Printf("Search API server starting on :%s\n", cfg.Port)
 	log.Fatal(http.ListenAndServe(":"+cfg.Port, nil))

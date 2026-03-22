@@ -32,7 +32,7 @@ case "$1" in
         ;;
     "server")
         if [ ! -f "$SERVER_BIN" ]; then build; fi
-        echo "Starting server on port 8080..."
+        echo "Starting server on port 8000..."
         ./server
         ;;
     "ingest")

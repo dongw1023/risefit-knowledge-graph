@@ -3,15 +3,15 @@
 The Search API provides a high-level interface for performing semantic similarity searches against the Risefit Knowledge Graph. It leverages vector embeddings to find relevant document chunks based on natural language queries.
 
 ## Base URL
-The service runs on port `8080` by default.
-`http://<host>:8080`
+The service runs on port `8000` by default.
+`http://<host>:8000`
 
 ## Endpoints
 
 ### 1. Search Documents
 Performs a semantic search using a text query and optional metadata filters.
 
-*   **URL:** `/search`
+*   **URL:** `/v1/search`
 *   **Method:** `POST`
 *   **Content-Type:** `application/json`
 
@@ -86,7 +86,7 @@ Returns a list of search results sorted by relevance score.
 
 ## Example Usage (cURL)
 ```bash
-curl -X POST http://localhost:8080/search \
+curl -X POST http://localhost:8000/v1/search \
      -H "Content-Type: application/json" \
      -d '{
            "query": "muscle recovery protein",

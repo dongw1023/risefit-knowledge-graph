@@ -2,17 +2,17 @@
 
 # Configuration
 # Default to localhost for testing, or set via environment variable
-BASE_URL="${SEARCH_API_URL:-http://localhost:8080}"
+BASE_URL="${SEARCH_API_URL:-http://localhost:8000}"
 QUERY="${1:-muscle recovery protein}"
 NUM_RESULTS="${2:-3}"
 
 echo "Searching for: $QUERY"
-echo "Target URL: $BASE_URL/search"
+echo "Target URL: $BASE_URL/v1/search"
 
 # Perform the request and capture the response and HTTP code
 # We use a temp file to safely separate the body and the status code
 TEMP_FILE=$(mktemp)
-HTTP_CODE=$(curl -s -o "$TEMP_FILE" -w "%{http_code}" -X POST "$BASE_URL/search" \
+HTTP_CODE=$(curl -s -o "$TEMP_FILE" -w "%{http_code}" -X POST "$BASE_URL/v1/search" \
      -H "Content-Type: application/json" \
      -d "{
            \"query\": \"$QUERY\",
